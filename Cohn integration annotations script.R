@@ -28,7 +28,7 @@ ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
 
 #get entrez id, go id, strand 
 CohnIntegrationAnnotations<-getBM(attributes=c("hgnc_symbol","entrezgene",
-                                "go_id","strand","namespace_1003"),
+                                "go_id","strand","namespace_1003","name_1006"),
                    mart = ensembl, values=symbols,
                    filters = "hgnc_symbol")
 
