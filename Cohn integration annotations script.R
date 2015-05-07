@@ -1,11 +1,13 @@
 ################## Annotations of Cohn Integration site genes ##########
-
+# Started 7May15
 require(biomaRt)
 require(stringr)
 require(dplyr)
-
+setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
 #read in spreadsheet of integration info
+
 CohnIntegrations<-read.csv("Cohn et al Integration list.csv")
+
 #select just the symbol.isoform column
 symbols.isoforms<-select(CohnIntegrations, Symbol.Isoform)
 #make into characters
@@ -35,56 +37,3 @@ save(CohnIntegrationAnnotations, file="CohnIntegrationAnnotations_7May15.Rda")
 
 write.csv(CohnIntegrationAnnotations,"CohnIntegrationAnnotations.csv")
 
-
-
-
-
-#get the gene universe: this includes hgnc_symbol,entrezgene,
-#go_id,strand, namespace_1003 (go term name)
-
-load("geneUniverse7May15.Rda")
-
-# limit the universe to UNIQUE symbols to use
-#for names in the overlap vector
-UniqueAnnotations<-unique(annotations)
-
-#0's and 1's vector (overlaps):
-#which symbols in UniqueAnnotations overlap with those in symbols? (logical)
-
-overlaps <-factor(as.integer(UniqueAnnotations$hgnc_symbol %in% symbols))
-
-CohnIntegrationAnnotations<-UniqueAnnotations[overlaps,]
-
-#assign the names from allHumanGeneSymbols to the 1's and 0's in overlaps
-names(overlaps)<-allHumanGeneSymbols
-
-
-
-
-
-
-
-
-
-
-
-
-
-#set up data for GO2Genes argument in topGO:
-
-#make a list mapping GO ids and their corresponding symbols
-GOtoGene<- split(annotations_bp$hgnc_symbol,annotations_bp$go_id)
-
-
-#remove duplicates
-GOtoGene<- lapply(GOtoGene, unique)  
-save(GOtoGene, file= "CohnIntegrationGOtoGene.Rda")
-###################################################################
-
-#Go2Genes argument needs to be a mapping list (that I just made above)
-topGOdata <- new("topGOdata",description = "Simple session",
-                 ontology = "BP",
-                 allGenes = overlaps,
-                 nodeSize = 5,
-                 annot = annFUN.GO2genes,
-                 GO2genes = GOtoGene)
