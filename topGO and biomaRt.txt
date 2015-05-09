@@ -1,0 +1,216 @@
+
+############ biomaRt#############################
+ #Goal: get GO ids and terms from bioMaRt from list of entrez ids
+ 
+ require(illuminaHumanv4.db)
+ require(biomaRt)
+ 
+ UP<-longForm%>%
+   filter(Direction == "UP", ENTREZ_GENE_ID)
+ #make a vector of the ids to annotate
+ UPentrez<-UP$ENTREZ_GENE_ID
+ 
+ #set the mart you want to use (see listMarts())
+ #and choose the dataset to use see listDatasets()
+ 
+ ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
+ 
+ #attributes: the values you want
+ #filters: the data biomaRt should look at and retrieve attributes for   
+ 
+ #the attribute for go term name is "name_1006"
+ 
+ 
+ #This is a list of the entrez ids and the associated go terms and IDs
+ goids<-getBM(attributes=c("entrezgene","go_id","name_1006"),
+             filters = "entrezgene",values=UPentrez,
+             mart = ensembl)
+
+--------------------------------------------------------------------------------------
+#topGO
+
+#get GO ids for all the genes in the array universe
+#this is a list of entrez ids and under each are the go numbers
+#associated with those entrez ids.
+
+#different options for how to get the GO's
+#annFUN.db(whichOnto, feasibleGenes = NULL, affyLib)
+#annFUN.org(whichOnto, feasibleGenes = NULL, mapping, ID = "entrez") 
+#annFUN(whichOnto, feasibleGenes = NULL, affyLib)
+
+#The functions annFUN.gene2GO and annFUN.GO2genes are used 
+#when the user provide his own annotations either as a
+#gene-to-GOs mapping, either as a GO-to-genes mapping.
+
+#The annFUN.org function is using the mappings from the 
+#"org.XX.XX" annotation packages. The function supports 
+#different gene identifiers.
+
+#The annFUN.file function will read the annotations of
+#the type gene2GO or GO2genes from a text file.
+
+geneID2GO<-inverseList(annFUN.org("BP", feasibleGenes = NULL,
+                      mapping="org.Hs.eg.db", ID = "entrez"))
+
+
+#geneNames are the entrez ids associated with GO numbers
+geneNames<-names(geneID2GO)
+
+
+#make a list of 1's and 0's to show which genes in the 
+#universe overlap with my interesting genes.
+
+geneList<-factor(as.integer(geneNames %in% myGenesEntrez))
+#geneList stays the same length as geneNames since the entries
+# not actually filtered here, just marked 0 or 1
+#so geneNames will have the correct number of names to use for the 
+#geneList
+
+#make geneList a named list, using the names from geneNames
+names(geneList)<-geneNames
+
+
+#allGenes is the list showing which of my genes are in the universe
+#(1) and which are not(0)
+
+## there are three annotation functions available:
+##1. annFUN.db  -- used for bioconductor annotation chips
+##2. annFUN.gene2GO  -- used when you have mappings from each gene to GOs
+##3. annFUN.GO2genes -- used when you have mappings from each GO to genes
+
+#I have gene 2 GOs in the geneID2GO list that I made so I will
+#use option 2.
+#gene2GO is the mapping that shows geneIDs and assoc GO numbers
+#in the correct list format.
+
+
+GOdata<-new("topGOdata", ontology = "BP", allGenes = geneList,
+            annot = annFUN.gene2GO, gene2GO = geneID2GO)
+
+
+
+------------------------------------EXAMPLE FROM KAVITA----------------------------------------------------------------
+#There are couple of ways to get GO terms and gene names:
+  
+#(1)
+library(org.Hs.eg.db)
+library(topGO)
+#annFUN.org is the one you use when you have mappings from "org.XX.XX" annotation packages
+#get mapping for GO id->symbols. xx is a list of symbols and the name
+#of the each element is go id for that group of symbols
+xx <- annFUN.org("BP", mapping = "org.Hs.eg.db", ID = "symbol")
+
+
+#unlist turns the list xx into a vector of (unique) gene symbols,
+#each of which has a GO id as its name
+
+all_genes1 = unique(unlist(xx))
+
+#(2) 
+
+library(topGO)
+library(biomaRt)
+
+#set up mart
+mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl") 
+
+go2geneS = getBM(attributes= c("hgnc_symbol","go_id","name_1006",
+                               "go_linkage_type","namespace_1003"),mart= mart)
+
+
+#nothing put in for values or filters? Does that mean it is for the whole genome?
+
+#subsetting for just the biological processes
+go2gene_BP = go2geneS[go2geneS$namespace_1003 == "biological_process",]
+
+#subset for the just theunique instnaces of the first two columns, symbol and go id
+go2gene_BP_short = unique(go2gene_BP[,1:2]) 
+
+#I think this eliminates any entries that are missing a symbol or go id
+#but I don't think there are any missing
+go2gene_BP_short  = go2gene_BP_short[nchar(go2gene_BP_short$hgnc_symbol) > 0 & nchar(go2gene_BP_short$go_id) > 0,] 
+
+
+
+
+#go2gene_Bp_short is longform and unstacking makes a list of all the
+#symbols belonging to each go id and the go id is the name of the element
+
+# this is the same (I think) as list xx in method 1 above.
+
+entrez_annot = unstack(go2gene_BP_short)#why entrez? there are no entrez ids
+
+#all_genes2 is a vector of unique symbols
+all_genes2 = unique(go2gene_BP_short$hgnc_symbol)
+
+
+#comparing
+
+#which genes in the all_genes1 vector are
+#in all_genes1 but not all_genes2?
+w<-!(all_genes1%in%all_genes2)
+x<-(all_genes1[w]#388
+
+#vice versa
+y<-!(all_genes2%in%all_genes1)
+z<-all_genes2[y]#434
+
+#so the methods don't give me the same answer. There are different
+#lengths each list has ~400 genes that the other doesn't.
+
+
+--------------------------- EXAMPLE USING found_genes DATA ----------------------------------------------------------
+
+require(biomaRt)
+require(topGO)
+
+load("found_genes.Rda") #gene symbols
+
+
+#create a mapping from hgnc symbol to go id, strand and entrezid
+#set up mart
+ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
+
+#get entrez id, go id, strand 
+annotations<-getBM(attributes=c("hgnc_symbol","entrezgene",
+                                "go_id","strand","namespace_1003"),
+                   mart = ensembl)
+
+#filter for just the biological process go ids
+
+annotations_bp<-annotations[annotations$namespace_1003=="biological_process",]
+
+#set up data for the allGenes argument in topGO:
+# make a vector of 0's and 1's named with the names of genes
+#in the gene univserse. 0 means that
+#genes is in the universe but not in your found genes.
+#1 means it is in both.
+
+#make a vector of the unique symbols for all_genes to use
+#for names in the found vector
+CLall_genes<-unique(annotations_bp$hgnc_symbol)
+
+#0's and 1's vector:
+#which symbols in all_genes overlap with those in found_genes? (logical)
+found2 = factor(as.integer(CLall_genes %in% found_genes))
+
+
+#assign the names from all_genes to the 1's and 0's in found
+names(found2) = CLall_genes
+
+#set up data for GO2Genes argument in topGO
+
+#make a list mapping GO ids and their corresponding symbols
+GOtoGene<- split(annotations_bp$hgnc_symbol,annotations_bp$go_id)
+
+
+#remove duplicates
+GOtoGene<- lapply(GOtoGene, unique)  
+
+#Go2Genes argument needs to be a mapping list
+topGOdata <- new("topGOdata",description = "Simple session",#??
+                     ontology = "BP",
+                     allGenes = found,
+                     nodeSize = 5,
+                     annot = annFUN.GO2genes,
+                     GO2genes = GOtoGene)
