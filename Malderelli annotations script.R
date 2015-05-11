@@ -1,5 +1,6 @@
 
-#################### Adding GO terms to Malderelli data ################
+##################Getting new go terms for Malderelli data ################
+
 require(biomaRt)
 
 setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
@@ -10,18 +11,18 @@ load("MalderelliData.formatted.likeSCRIData.Rda")
 #give the data frame an easier name
 MalderelliData<-MalderelliData.formatted.likeSCRIData
 
-GeneSymbols<-as.character(MalderelliData$Gene) #gene symbols
-
-
 
 #set up mart
 ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
-save(ensembl, file = "ensemblMart08May15")
+
+
+save(ensembl, file = "ensemblMart011May15")
+
 
 #get entrez id, go id, strand, go name and go category
-MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol","entrezgene",
-                                "go_id","strand","namespace_1003", "name_1006"),
-                   mart = ensembl, values=GeneSymbols,
+MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol",
+                                "go_id","namespace_1003"),
+                   mart = ensembl, values=MalderelliData$Gene,
                    filters="hgnc_symbol")
 
 #BP only, then take out the BP column
@@ -36,12 +37,47 @@ BPMalderelliAnnotations <- BPMalderelliAnnotations[
     nchar(BPMalderelliAnnotations$go_id)>0,]
 
 
-save(BPMalderelliAnnotations, file="BPMalderelliAnnotations_08May15.Rda")
+#convert the annotation df (with repeated symbols)to a list of go ids
+# and the symbols that are in them
 
-Short_BPMalderelliAnnotations = unique(BPMalderelliAnnotations[,c(1,3)])
+BPMalderelliGoAndSymbolList<-unstack(BPMalderelliAnnotations)
 
-BPMalderelliGoAndSymbolList<-unstack(Short_BPMalderelliAnnotations)
+#what is the length of each element (how many genes in each go id)
+x<-sapply(BPMalderelliGoAndSymbolList,FUN=length)
+#how many have <1 gene in them?
+sum(x<1) # none
 
-save(BPMalderelliGoAndSymbolList, file = "BPMalderelliGoAndSymbolList_08May15.Rda")
+LogicalBPMalderelliGOAndSymbolList<- lapply(BPMalderelliGoAndSymbolList,
+                                  FUN=function(i)factor(as.integer(MalderelliData$Gene %in% i)))
+
+
+
+#http://stackoverflow.com/questions/18747800/fast-way-of-converting-large-list-to-dataframe
+#make a data frame out of the list with one column per go id and symbols as
+#rownames. values are 0's and 1's
+
+n<-length(LogicalBPMalderelliGOAndSymbolList[[1]])
+
+dfBPMalderelliGOAndSymbol<-structure(LogicalBPMalderelliGOAndSymbolList,
+                                     row.names = c(NA, -n), class = "data.frame")
+
+#change colons to periods
+colnames(dfBPMalderelliGOAndSymbol)<-str_replace_all(colnames(dfBPMalderelliGOAndSymbol),":","\\.")
+
+
+CLMalderelliData.formatted.like.SCRIData<-cbind(MalderelliData[,1:8],dfBPMalderelliGOAndSymbol)
+
+save(CLMalderelliData)
+#look back in annotation list to check that things are aligned 
+
+head(BPMalderelliGoAndSymbolList)
+
+#so in rows RAB1A and ULK2, column GO:00000045 should !=0 since
+#I know from BPMalderelliGOAndSymbolList that both symbols are in that
+#go id
+CLMalderelliData[CLMalderelliData$"GO:0000045"!=0,c("Gene","GO:0000045")]
+
+CLMalderelliData[CLMalderelliData$Gene=="RAB1A","GO:0000045"]
+
 
 
