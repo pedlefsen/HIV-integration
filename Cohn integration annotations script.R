@@ -18,6 +18,8 @@ symbols.isoforms$Symbol.Isoform<-as.character(symbols.isoforms$Symbol.Isoform)
 #need to escape the |
 symbols.isoforms<-str_split_fixed(symbols.isoforms$Symbol.Isoform,"\\|",2)
 colnames(symbols.isoforms)<-c("symbol","isoform")
+
+
 #just want the first column (the symbols)
 CohnDataCL<-cbind(CohnData,symbols.isoforms)
 CohnDataCL<-select(CohnDataCL,-Symbol.Isoform)
@@ -31,7 +33,7 @@ CohnDataCL<-select(CohnDataCL,-Symbol.Isoform)
 #set up mart
 ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
 
-#get entrez id, go id, strand 
+#get go id, strand 
 CohnAnnotations<-getBM(attributes=c("hgnc_symbol",
                                 "go_id","namespace_1003"),
                    mart = ensembl, values=CohnDataCL$symbol,
@@ -49,20 +51,29 @@ BPCohnAnnotations <- BPCohnAnnotations[
 
 save(BPCohnAnnotations, file="BPCohnAnnotations_08May15.Rda")
 
+#convert the annotation df (with repeated symbols)to a list of go ids
+# and the symbols that are in them
 
 BPCohnGoAndSymbolList<-unstack(BPCohnAnnotations)
 
 
 save(BPCohnGoAndSymbolList, file = "BPCohnGoAndSymbolList_08May15.Rda")
 
-BPGOAndSymbolListLogical<- lapply(BPCohnGoAndSymbolList,
+
+#make a logical vector indicating which symbols are in go ids.For each go id,
+#need a 0 (not in that group) or 1 (in that group) for each symbol in the list
+
+
+x<- lapply(BPCohnGoAndSymbolList,
            FUN=function(i)factor(as.integer(CohnDataCL$symbol %in% i)))
 
-save(BPGOAndSymbolListLogical,file = "BPGOAndSymbolListLogical.Rda")
+save(x,file = "BPGOAndSymbolListLogical.Rda")
 
+#make a data frame out of the list with one column per go id and symbols as
+#rownames. values are 0's and 1's
 #http://stackoverflow.com/questions/18747800/fast-way-of-converting-large-list-to-dataframe
-n<-length(x[[1]])
-df<-structure(x, row.names = c(NA, -n), class = "data.frame")
+nCohn<-length(x[[1]])
+dfCohn<-structure(x, row.names = c(NA, -n), class = "data.frame")
 
 
 CohnData.formatted.likeSCRIData<-cbind(CohnDataCL,df)
