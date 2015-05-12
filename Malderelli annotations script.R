@@ -13,10 +13,11 @@ MalderelliData<-MalderelliData.formatted.likeSCRIData
 
 
 #set up mart
+
 ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
 
 
-save(ensembl, file = "ensemblMart011May15")
+save(ensembl, file = "ensemblMart11May15")
 
 
 #get entrez id, go id, strand, go name and go category
@@ -65,9 +66,25 @@ dfBPMalderelliGOAndSymbol<-structure(LogicalBPMalderelliGOAndSymbolList,
 colnames(dfBPMalderelliGOAndSymbol)<-str_replace_all(colnames(dfBPMalderelliGOAndSymbol),":","\\.")
 
 
-CLMalderelliData.formatted.like.SCRIData<-cbind(MalderelliData[,1:8],dfBPMalderelliGOAndSymbol)
+CLMalderelliData.formatted.likeSCRIData<-cbind(MalderelliData[,1:8],dfBPMalderelliGOAndSymbol)
 
-save(CLMalderelliData)
+###################   SAVE ####################################
+
+
+save(CLMalderelliData.formatted.likeSCRIData,
+     file = "CLMalderelliData.formatted.likeSCRIData.Rda")
+
+
+
+
+
+
+
+
+
+
+
+
 #look back in annotation list to check that things are aligned 
 
 head(BPMalderelliGoAndSymbolList)
