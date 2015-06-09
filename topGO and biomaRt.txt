@@ -95,9 +95,14 @@ GOdata<-new("topGOdata", ontology = "BP", allGenes = geneList,
 #(1)
 library(org.Hs.eg.db)
 library(topGO)
+
+
 #annFUN.org is the one you use when you have mappings from "org.XX.XX" annotation packages
 #get mapping for GO id->symbols. xx is a list of symbols and the name
-#of the each element is go id for that group of symbols
+#of each element is go id for that group of symbols
+
+
+
 xx <- annFUN.org("BP", mapping = "org.Hs.eg.db", ID = "symbol")
 
 
@@ -105,6 +110,8 @@ xx <- annFUN.org("BP", mapping = "org.Hs.eg.db", ID = "symbol")
 #each of which has a GO id as its name
 
 all_genes1 = unique(unlist(xx))
+
+
 
 #(2) 
 
@@ -181,6 +188,7 @@ annotations<-getBM(attributes=c("hgnc_symbol","entrezgene",
 annotations_bp<-annotations[annotations$namespace_1003=="biological_process",]
 
 #set up data for the allGenes argument in topGO:
+
 # make a vector of 0's and 1's named with the names of genes
 #in the gene univserse. 0 means that
 #genes is in the universe but not in your found genes.
