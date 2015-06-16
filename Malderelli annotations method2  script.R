@@ -1,24 +1,36 @@
 
 require(dplyr)
 require(stringr)
+library(HGNChelper)
 setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
 
 #load data spreadsheet
 load("MalderelliData.formatted.likeSCRIData.Rda")
 
-#give the data frame an easier name
-MalderelliData<-MalderelliData.formatted.likeSCRIData
 
 
-c<-MalderelliData%>%
-  arrange(Gene)%>%
-  select(Gene)
 
-d<-unique(c)
-#the first 6 "genes" are actually dates? 2-Mar, 2-Sep 9-Sep. Is this
-# a mistake?
 
-Genes<-unique(MalderelliData$Gene)
+#using HGNChelper to check symbols and provide corrections
+r<-checkGeneSymbols(MalderelliData.formatted.likeSCRIData$Gene,
+                    unmapped.as.na = FALSE)
+r<-r[,c(1,3)]
+names(r)[1]<-"Gene"
+r<-unique(r)
+
+#I tried to merge without making the values in r unique and it 
+#gave me ~25k entries in the result...
+
+MalderelliData.formatted.likeSCRIData<-merge(r,MalderelliData.formatted.likeSCRIData,
+                                             by ="Gene")
+
+MalderelliData.formatted.likeSCRIData<-MalderelliData.formatted.likeSCRIData[,2:262]
+
+names(MalderelliData.formatted.likeSCRIData)[1]<-"Gene"
+
+MalderelliData.formatted.likeSCRIData$Gene<-str_replace(MalderelliData.formatted.likeSCRIData$Gene,
+                                                        "MARC2 /// MARCH2","MARCH2")
+Genes<-unique(MalderelliData.formatted.likeSCRIData$Gene)
 
 ######################## different method start here #################
 library(org.Hs.eg.db)
@@ -45,12 +57,12 @@ resultClassic = runTest(GOdata,algorithm = 'classic',
 
 
 print(resultClassic)
-# 845 significant genes,533 terms p<0.01
+# 872 significant genes,535 terms p<0.01
 
 resultelim = runTest(GOdata,algorithm = 'elim',
                      statistic =  'fisher')
 
-print(resultelim)# 845 significant genes, 124 terms p <0.01
+print(resultelim)# 872significant genes, 122 terms p <0.01
 
 results.table = GenTable(GOdata, Rclassic = resultClassic,
                          Relim = resultelim,
@@ -86,7 +98,7 @@ names(df)[1]<-"Gene"
 #merge in the id columns from Malderelli data by Gene.
 #Mald data has genes repeated a lot of times since there are different
 #reads for the same gene
-df2<-merge(MalderelliData [,1:8], df, by = "Gene")
+df2<-merge(MalderelliData.formatted.likeSCRIData [,1:8], df, by = "Gene")
 
 
 
@@ -130,6 +142,12 @@ totalAnnotations<-melteddf2 %>%
   summarise(total=sum(as.integer((value))))%>%
   arrange(total)
 
+
+m<-as.character(totalAnnotations[1:20,"Gene"])
+
+n<-checkGeneSymbols(m,unmapped.as.na = FALSE)
+
+
 #just want genes that were annotated to at least one term
 GenesToKeep<- totalAnnotations %>%
   filter(total != 0)%>%
@@ -145,7 +163,7 @@ CLMalderelliData.formatted.likeSCRIData<-df3 %>%
 ############################# SAVE ###############################
 
 save(CLMalderelliData.formatted.likeSCRIData,
-     file = "CLMalderelli.CLMalderelliData.formatted.likeSCRIData.Rda")
+     file = "CLMalderelliData.formatted.likeSCRIData.Rda")
 
 
 
