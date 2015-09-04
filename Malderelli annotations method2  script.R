@@ -1,4 +1,19 @@
 
+##################### NOTES ###################################
+# 
+#This is what this script does:
+#Start with MalderelliData.formatted.likeSCRIdata.Rda from Paul/Charles
+# Use the HGNChelper package to check for any incorrect/excel mogrified symbols and correct them.
+# Use the or.Hs.eg.db database (Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers) whole genome annotations.
+# 
+# Use topGo "classic" algorithm for Fisher's test to see which, if any, of the Go term annotations of 
+# the Malderelli gene list were in different proportions to what is expected from the whole genome 
+# annotations from org.Hs.eg.db
+# 
+# Out of all the Malderelli symbols that were annotated, make a list showing which belong to the 
+# significant annotations (0 if no, 1 if yes). Convert to a data frame and add other columns to format 
+# the df the same way as SCRI data.
+
 require(dplyr)
 require(stringr)
 library(HGNChelper)
@@ -6,9 +21,6 @@ setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
 
 #load data spreadsheet
 load("MalderelliData.formatted.likeSCRIData.Rda")
-
-
-
 
 
 #using HGNChelper to check symbols and provide corrections
@@ -21,6 +33,8 @@ r<-unique(r)
 #I tried to merge without making the values in r unique and it 
 #gave me ~25k entries in the result...
 
+
+#merge in the correct "suggested symbols" with my Malderelli symbol list
 MalderelliData.formatted.likeSCRIData<-merge(r,MalderelliData.formatted.likeSCRIData,
                                              by ="Gene")
 
@@ -38,19 +52,36 @@ library(topGO)
 library(stringr)
 library(reshape2)
 
-#make a named list of all GO ids in org.Hs.eg.db and the symbols that belong to it
+#Make a list of all the symbols in org.Hs.eg.db and under each
+#symbol, put the GO ids that annotate that symbol. The symbols are
+#the "names" of the list items (the GO ids)
 Gene2GO <-inverseList(annFUN.org("BP", mapping = "org.Hs.eg.db",
                                  ID = "symbol"))
 
+#Get the org.Hs.eg.db symbols from the list made above
 geneNames<-names(Gene2GO)
+
+#Genes = unique gene symbols in Malderelli data set
+
+#geneList = a numeric representation of which symbols are both in my Malderelli set ("Genes")
+#AND in the list I got from org.Hs.eg.db. 0 = not in my list,
+# 1 = in my list and the org.Hs.eg.db list
 
 geneList<-factor(as.integer(geneNames %in% Genes))
 
+#add symbols to the numbers so we know which genes are being
+#represented
 names(geneList)<-geneNames
 
-
+#allGenes = gene universe = a named (with symbols) list of
+#0's and 1's showing which genes in the or.Hs.eg.db list were
+# found in Malderelli
 GOdata<-new("topGOdata", ontology = "BP", allGenes = geneList,
             annot = annFUN.gene2GO, gene2GO = Gene2GO, nodeSize=5)
+
+
+#test to see if GO terms showed up in the Malderelli data in the 
+#same proportions at they do in the org.Hs.eg.db list??
 
 resultClassic = runTest(GOdata,algorithm = 'classic',
                         statistic =  'fisher')
@@ -58,6 +89,8 @@ resultClassic = runTest(GOdata,algorithm = 'classic',
 
 print(resultClassic)
 # 872 significant genes,535 terms p<0.01
+#535 terms had showed up in proportions different from in
+#org.Hs.eg. db??
 
 resultelim = runTest(GOdata,algorithm = 'elim',
                      statistic =  'fisher')
@@ -76,19 +109,24 @@ results.table.bh <- results.table[as.numeric(results.table$Rclassic) < 0.01,]
 sigTerms<-results.table.bh$GO.ID
 
 
-#named list of go terms and the genes that go in them. I did this instead
-#of the for loop in Kavita's code
+# Get the gene symbols that belong to the significant annotations
+#as defined by the classic test. I did this instead
+#of the for loop in Kavita's code (it is built into topGo)
 genesInGOterms<-genesInTerm(GOdata,sigTerms)
 
-#annotated genes (Called signif in topGO, since I used a pre-defined list,
+# Extracting all the gene symbols that got annotated by TopGo
+#(Called signif in topGO, since I used a pre-defined list,
 #all genes that got annotated are considered signif)
+
 signifGenes<-sigGenes(GOdata)
 
-#get logical
+#Make a list showing numerically: of all the gene symbols that
+#got annotated, which of them  belong to significant annotations. 
+
 overlapList<-lapply(genesInGOterms,
                     FUN=function(i)(factor(as.integer(signifGenes %in% i))))
 
-
+#make the list into a dataframe
 df<-data.frame(overlapList)
 
 #add the genes list as a column in the df
