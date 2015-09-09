@@ -4,23 +4,46 @@
 require(biomaRt)
 require(dplyr)
 require(stringr)
+require(HGNChelper)
+require(reshape2)
 setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
 
 #load data spreadsheet
 load("MalderelliData.formatted.likeSCRIData.Rda")
 
-#give the data frame an easier name
-MalderelliData<-MalderelliData.formatted.likeSCRIData
+#here are the terms that I want to check against the annotations
+#that I get for the Malderelli list
+termsToCheck<-colnames(MalderelliData.formatted.likeSCRIData[,9:48])
 
-Genes<-unique(as.character(MalderelliData$Gene))
+#using HGNChelper to check symbols and provide corrections
+r<-checkGeneSymbols(MalderelliData.formatted.likeSCRIData$Gene,
+                    unmapped.as.na = FALSE)
+#ignore the "true" and "false" column
+r<-r[,c(1,3)]
+names(r)[1]<-"Gene"
+r<-unique(r)
+
+
+
+
+#merge in the correct "suggested symbols" with my Malderelli symbol list
+MalderelliData.formatted.likeSCRIData<-merge(r,MalderelliData.formatted.likeSCRIData)
+
+#keep the correct names
+MalderelliData.formatted.likeSCRIData<-MalderelliData.formatted.likeSCRIData[,2:262]
+
+names(MalderelliData.formatted.likeSCRIData)[1]<-"Gene"
+#fix this weird one
+MalderelliData.formatted.likeSCRIData$Gene<-str_replace(MalderelliData.formatted.likeSCRIData$Gene,
+                                                        "MARC2 /// MARCH2","MARCH2")
+#new gene list has all correct symbols
+Genes<-unique(MalderelliData.formatted.likeSCRIData$Gene)
+                                            
 
 #set up mart
 
 load("ensemblMart11May15.Rda")
 ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
-
-
-
 
 #get entrez id, go id, strand, go name and go category
 MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol",
@@ -28,9 +51,10 @@ MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol",
                    mart = ensembl, values=Genes,
                    filters="hgnc_symbol")
 
-load("MalderelliAnnotations8June15.Rda")
+load("MalderelliAnnotations3Sept15.Rda")
 
-#BP only, then take out the BP column
+
+#BP only, then take out the "BP" column
 
 BPMalderelliAnnotations<-MalderelliAnnotations%>%
   filter(namespace_1003=="biological_process")%>%
@@ -45,67 +69,51 @@ BPMalderelliAnnotations <- BPMalderelliAnnotations[
 UniqueBPMalderelliAnnotations<-unique(BPMalderelliAnnotations)
 #same # of observations as the non-unique version
 
+#replace the colon in "GO:xxxxxxx" with a period so it matches
+#the formatting in the SCRI data
 
-#convert the annotation df (with repeated symbols)to a list of go ids
-# and the symbols that are in them
+UniqueBPMalderelliAnnotations$go_id<-str_replace(UniqueBPMalderelliAnnotations$go_id,
+                                                 ":","\\.")
 
-BPMalderelliGoAndSymbolList<-unstack(BPMalderelliAnnotations)
+#convert the annotation df (with repeated symbols)to a list of gene symbols symbols
+# and the go ids annotated to them.
 
+#the "form" argument says which variable should be the sub elements
+#of the list and which should be the names of the elements.
 
-
-## For each gene symbol that I put into biomaRt (Genes),
-# is that symbol present or absent from each named element in GOAndSymbolList?
-
-LogicalBPMalderelliGOAndSymbolList<-lapply(BPMalderelliGoAndSymbolList,
-          FUN=function(i)factor(as.integer(MalderelliData$Gene %in% i)))
-
-
-#make that list into a data frame with GO ids as the columns
-
-dfBPMalderelliGOAndSymbol<-data.frame(LogicalBPMalderelliGOAndSymbolList)
+SymbolTermList<-unstack(UniqueBPMalderelliAnnotations, form = go_id~hgnc_symbol)
 
 
 
-#combine with other ID columns from original data set
-CLMalderelliData.formatted.likeSCRIData<-cbind(MalderelliData[,1:8],dfBPMalderelliGOAndSymbol)
+#Look at each gene symbol in the list and put a 1 if that element
+#contains a go term from termsToCheck and 0 if it doesn't.
+
+TermCheckList<-lapply(SymbolTermList,
+          FUN=function(i)factor(as.integer(termsToCheck %in% i)))
 
 
-#look back in annotation list to check that things are aligned 
-
-head(BPMalderelliGoAndSymbolList)
-
-#so in rows RAB1A and ULK2, column GO:00000045 should !=0 since
-#I know from BPMalderelliGOAndSymbolList that both symbols are in that
-#go id
-CLMalderelliData.formatted.likeSCRIData[CLMalderelliData.formatted.likeSCRIData$"GO.0000045"!=0,c("Gene","GO.0000045")]
-
-CLMalderelliData.formatted.likeSCRIData[CLMalderelliData.formatted.likeSCRIData$Gene=="RAB1A","GO.0000045"]
+#turn the list into a data frame (makes symbols the columns)
+#then transpose the rows and columns using t()
+df<-t(data.frame(TermCheckList))
 
 
+#make the go ids the col names
+colnames(df)<-termsToCheck
+
+#it got turned into a matrix so change back to df
+df<-as.data.frame(df)
+
+#make the gene symbols a real column instead of row names
+#and put it first
+df<-df%>%
+  mutate("Gene"=rownames(df))%>%
+  select(Gene,1:40)
+
+#I could merge in the original info from the MalderelliData.formatted...
+#file but I don't trust merge to do it all correctly so I'm
+#just saving this
 
 
+save(df,file="MalderelliData checked GO terms 9Sept15.Rda")
 
 
-################################   SAVE ####################################
-
-
-save(CLMalderelliData.formatted.likeSCRIData,
-     file = "CLMalderelliData.formatted.likeSCRIData.Rda")
-
-
-
-
-######################## Filtering for Hallmark terms ##############
-
-hallmark<-read.csv("hallmarksCancer_GO_CL.csv")
-hallmark$go_id<-as.character(hallmark$go_id)
-
-c<-unique(BPMalderelliAnnotations$go_id %in% hallmark$go_id)
-
-#filter out just the hallmark go_ids that overlapped with those that I
-#already found
-
-hallmarkFiltered<-dfBPMalderelliGOAndSymbol[,c]
-
-
-CLMalderelliHallmarkFiltered<-cbind(MalderelliData[,1:8],hallmarkFiltered)
