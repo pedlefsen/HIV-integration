@@ -6,6 +6,7 @@ require(dplyr)
 require(stringr)
 require(HGNChelper)
 require(reshape2)
+
 setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
 
 #load data spreadsheet
@@ -16,40 +17,43 @@ load("MalderelliData.formatted.likeSCRIData.Rda")
 termsToCheck<-colnames(MalderelliData.formatted.likeSCRIData[,9:48])
 
 #using HGNChelper to check symbols and provide corrections
-r<-checkGeneSymbols(MalderelliData.formatted.likeSCRIData$Gene,
+hgncCheck<-checkGeneSymbols(MalderelliData.formatted.likeSCRIData$Gene,
                     unmapped.as.na = FALSE)
-#ignore the "true" and "false" column
-r<-r[,c(1,3)]
-names(r)[1]<-"Gene"
-r<-unique(r)
+
+#if hgnc help can't find a good symbol, it can leave as NA or leave
+#the input if unmapped.as.na=FALSE
 
 
 
+MalderelliData.formatted.likeSCRIData<-cbind(hgncCheck,MalderelliData.formatted.likeSCRIData)
 
-#merge in the correct "suggested symbols" with my Malderelli symbol list
-MalderelliData.formatted.likeSCRIData<-merge(r,MalderelliData.formatted.likeSCRIData)
+#check what the wrong ones look like
+y<-filter(hgncCheck,Approved==FALSE)
+w<-unique(y)
 
 #keep the correct names
-MalderelliData.formatted.likeSCRIData<-MalderelliData.formatted.likeSCRIData[,2:262]
-
+MalderelliData.formatted.likeSCRIData<-MalderelliData.formatted.likeSCRIData[,-c(1:2,6)]
+#change the col name
 names(MalderelliData.formatted.likeSCRIData)[1]<-"Gene"
 #fix this weird one
 MalderelliData.formatted.likeSCRIData$Gene<-str_replace(MalderelliData.formatted.likeSCRIData$Gene,
                                                         "MARC2 /// MARCH2","MARCH2")
-#new gene list has all correct symbols
+#new gene list for mart has all correct symbols
 Genes<-unique(MalderelliData.formatted.likeSCRIData$Gene)
-                                            
+
+
+
 
 #set up mart
 
 load("ensemblMart11May15.Rda")
-ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
-
-#get entrez id, go id, strand, go name and go category
-MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol",
-                                "go_id","namespace_1003"),
-                   mart = ensembl, values=Genes,
-                   filters="hgnc_symbol")
+# ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
+# 
+# #get entrez id, go id, strand, go name and go category
+# MalderelliAnnotations<-getBM(attributes=c("hgnc_symbol",
+#                                 "go_id","namespace_1003"),
+#                    mart = ensembl, values=Genes,
+#                    filters="hgnc_symbol")
 
 load("MalderelliAnnotations3Sept15.Rda")
 
@@ -114,6 +118,14 @@ df<-df%>%
 #just saving this
 
 
-save(df,file="MalderelliData checked GO terms 9Sept15.Rda")
+save(df,file="MalderelliData BP only checked terms 9Sept15.Rda")
 
 
+symbolCheck<-cbind(unique(hgncCheck))
+colnames(symbolCheck)<-c("origNames","Approved","biomaRtInput")
+bioMartOut<-unique(MalderelliAnnotations$hgnc_symbol)
+biomaRtBPfiltered<-unique(BPMalderelliAnnotations$hgnc_symbol)
+
+save(symbolCheck,file="symbolCheck.Rda")
+save(bioMartOut,file="bioMartOutput.Rda")
+save(biomaRtBPfiltered, file="bioMartBPfilteredOutput.Rda")
