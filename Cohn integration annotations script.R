@@ -4,9 +4,18 @@ require(biomaRt)
 require(stringr)
 require(dplyr)
 require(reshape2)
+require(HGNChelper)
 setwd("J:/MacLabUsers/Claire/Projects/HIV-integration")
-#read in spreadsheet of integration info
 
+#read in Mald data to get terms for comparison
+load("MalderelliData.formatted.likeSCRIData.Rda")
+
+#here are the terms that I want to check against the annotations
+#that I get for the Malderelli list
+termsToCheck<-colnames(MalderelliData.formatted.likeSCRIData[,9:48])
+
+
+#read in spreadsheet of Cohn integration info
 CohnData<-read.csv("Cohn et al Integration list.csv")
 
 #select just the symbol.isoform column
@@ -24,93 +33,83 @@ colnames(symbols.isoforms)<-c("symbol","isoform")
 CohnDataCL<-cbind(CohnData,symbols.isoforms)
 CohnDataCL<-select(CohnDataCL,-Symbol.Isoform)
 
+hgncCheck<-checkGeneSymbols(CohnDataCL$symbol,
+                    unmapped.as.na = FALSE)
 
+CohnDataCL<-cbind(hgncCheck,CohnDataCL)
 
+#keep the correct names
+CohnDataCL<-CohnDataCL[,-c(1:2,11)]
+#change the col name
+names(CohnDataCL)[1]<-"symbol"
 
 #create a mapping from hgnc symbol to go id, strand and entrezid
 #based on hsapiens_gene_ensembl information in ensembl mart
 
+load("ensemblMart11May15.Rda")
 #set up mart
-ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
+#ensembl<-useMart("ensembl",dataset="hsapiens_gene_ensembl")
 
 #get go id, strand 
-CohnAnnotations<-getBM(attributes=c("hgnc_symbol",
-                                "go_id","namespace_1003"),
-                   mart = ensembl, values=CohnDataCL$symbol,
-                   filters = "hgnc_symbol")
 
-BPCohnAnnotations<-CohnAnnotations%>%
-  filter(namespace_1003=="biological_process")%>%
-  select(-namespace_1003)
-
-#eliminating any rows with  missing goid or symbol(none)
-BPCohnAnnotations <- BPCohnAnnotations[
-  nchar(BPCohnAnnotations$hgnc_symbol)>0 &
-    nchar(BPCohnAnnotations$go_id)>0,]
-
-
-save(BPCohnAnnotations, file="BPCohnAnnotations_08May15.Rda")
-
-#convert the annotation df (with repeated symbols)to a list of go ids
-# and the symbols that are in them
-
-BPCohnGoAndSymbolList<-unstack(BPCohnAnnotations)
+load("BPCohnAnnotations_08May15.Rda")
+# CohnAnnotations<-getBM(attributes=c("hgnc_symbol",
+#                                 "go_id","namespace_1003"),
+#                    mart = ensembl, values=CohnDataCL$symbol,
+#                    filters = "hgnc_symbol")
+# 
+# BPCohnAnnotations<-CohnAnnotations%>%
+#   filter(namespace_1003=="biological_process")%>%
+#   select(-namespace_1003)
+# 
+# #eliminating any rows with  missing goid or symbol(none)
+# BPCohnAnnotations <- BPCohnAnnotations[
+#   nchar(BPCohnAnnotations$hgnc_symbol)>0 &
+#     nchar(BPCohnAnnotations$go_id)>0,]
 
 
-save(BPCohnGoAndSymbolList, file = "BPCohnGoAndSymbolList_08May15.Rda")
+#convert the annotation df (with repeated symbols)to a list of gene symbols symbols
+# and the go ids annotated to them.
+
+#the "form" argument says which variable should be the sub elements
+#of the list and which should be the names of the elements.
+
+SymbolTermList<-unstack(BPCohnAnnotations, form = go_id~hgnc_symbol)
 
 
-#make a logical vector indicating which symbols are in go ids.For each go id,
-#need a 0 (not in that group) or 1 (in that group) for each symbol in the list
+
+#Look at each gene symbol in the list and put a 1 if that element
+#contains a go term from termsToCheck and 0 if it doesn't.There
+#should be either a 0 or 1 for each of the 40 terms to check
+#under each symbol
+
+TermCheckList<-lapply(SymbolTermList,
+                      FUN=function(i)factor(as.integer(termsToCheck %in% i)))
 
 
-x<- lapply(BPCohnGoAndSymbolList,
-           FUN=function(i)factor(as.integer(CohnDataCL$symbol %in% i)))
-
-save(x,file = "BPGOAndSymbolListLogical.Rda")
-
-#make a data frame out of the list with one column per go id and symbols as
-#rownames. values are 0's and 1's
-#http://stackoverflow.com/questions/18747800/fast-way-of-converting-large-list-to-dataframe
-nCohn<-length(x[[1]])
-dfCohn<-structure(x, row.names = c(NA, -n), class = "data.frame")
+#turn the list into a data frame (makes symbols the columns)
+#then transpose the rows and columns using t()
+df<-t(data.frame(TermCheckList))
 
 
-CohnData.formatted.likeSCRIData<-cbind(CohnDataCL,df)
+#make the go ids the col names
+colnames(df)<-termsToCheck
 
-colnames(CohnData.formatted.likeSCRIData)[1:3]<-c("Pt.","Read","Strand")
-#change read to char vector
-CohnData.formatted.likeSCRIData$Read<-as.character(CohnData.formatted.likeSCRIData$Read)
+#it got turned into a matrix so change back to df
+df<-as.data.frame(df)
 
-#combine read and site to match mald format
-CohnData.formatted.likeSCRIData$Read<-paste(CohnData.formatted.likeSCRIData$Read,
-                                            CohnData.formatted.likeSCRIData$site,
-                                            sep="+")
+#make the gene symbols a real column instead of row names
+#and put it first
+df<-df%>%
+  mutate("Gene"=rownames(df))%>%
+  select(Gene,1:40)
 
-#remove site column
-CohnData.formatted.likeSCRIData<-select(CohnData.formatted.likeSCRIData,-site)
-
-
-#reorder columns to match mald
-
-#make cols in correct order and rename as needed
-colsIwant<-CohnData.formatted.likeSCRIData%>%
-  select(Pt., Read, symbol,Strand)
-
-names(colsIwant)[3]<-"Gene"
-
-#remove offending cols
-CohnData.formatted.likeSCRIData<-CohnData.formatted.likeSCRIData%>%
-  select(-c(Pt.,Read,Strand,symbol))
-
-#re add corrected cols
-CohnData.formatted.likeSCRIData<-cbind(colsIwant,CohnData.formatted.likeSCRIData)
-
-save(CohnData.formatted.likeSCRIData, file="CohnData.formatted.likeSCRIData.Rda")
+#I could merge in the original info from the MalderelliData.formatted...
+#file but I don't trust merge to do it all correctly so I'm
+#just saving this
 
 
-#This should be ILR and KPNA1
-CohnData.formatted.likeSCRIData[CohnData.formatted.likeSCRIData$"GO:0000018"!=0,
-                                c("Gene","GO:0000018")]
+save(df,file="CohnData BP only checked terms 9Sept15.Rda")
 
-#ok
+
+
